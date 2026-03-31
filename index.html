@@ -204,6 +204,21 @@ function signal(pos,m,curAlloc){
   }
   let sig,col;
   if(s>=5){sig="STRONG BUY";col="#22c55e"}else if(s>=3){sig="BUY";col="#4ade80"}else if(s>=1){sig="ACCUMULATE";col="#a3e635"}else if(s>=-1){sig="HOLD";col="#f59e0b"}else if(s>=-3){sig="TRIM";col="#fb923c"}else{sig="SELL";col="#ef4444"}
+  // Allocation override: cap signal based on position vs target
+  if(curAlloc!=null){
+    const gap=pos.target-curAlloc;
+    if(gap<-0.5){
+      // Overweight — cap at HOLD, never suggest buying more
+      if(sig==="STRONG BUY"||sig==="BUY"||sig==="ACCUMULATE"){sig="HOLD — OVERWEIGHT";col="#f59e0b";R.unshift("⚠ Signal capped: strong fundamentals but already overweight")}
+    }else if(gap<0&&(sig==="STRONG BUY"||sig==="BUY")){
+      // Slightly over target — cap at ACCUMULATE
+      sig="ACCUMULATE";col="#a3e635";R.unshift("Signal moderated: near target allocation")
+    }
+    if(gap>1.5&&(sig==="SELL"||sig==="TRIM")){
+      // Very underweight but weak fundamentals — flag the conflict
+      R.unshift("⚠ Conflict: significantly underweight but weak fundamentals — review thesis")
+    }
+  }
   return{signal:sig,color:col,score:s,reasons:R,flags:F};
 }
 
