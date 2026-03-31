@@ -309,6 +309,29 @@ function render(){
 
   const alerts=enriched.filter(p=>p.signal==="STRONG BUY"||p.signal==="SELL"||p.signal==="TRIM"||p.flags.length>0).sort((a,b)=>(b.score||0)-(a.score||0));
 
+  // Exit candidates: tickers with allocation > 0 but target = 0 or not in tracked positions
+  const trackedTickers=new Set(POSITIONS.map(p=>p.t));
+  const exitCandidates=[];
+  // Check all allocation data
+  Object.entries(state.alloc).forEach(([ticker,alloc])=>{
+    if(alloc>0.005){ // > 0.005% to filter dust
+      const effTarget=(state.allocTargets&&state.allocTargets[ticker]!=null)?state.allocTargets[ticker]:null;
+      const inPositions=trackedTickers.has(ticker);
+      const targetIsZero=effTarget===0||(inPositions&&enriched.find(p=>p.t===ticker)?.target===0);
+      if(!inPositions||targetIsZero){
+        exitCandidates.push({ticker,alloc,target:effTarget!=null?effTarget:0,name:state.fd[ticker]?.name||ticker});
+      }
+    }
+  });
+  // Also check enriched positions with target 0 and alloc > 0
+  enriched.forEach(p=>{
+    if(p.target===0&&p.curAlloc!=null&&p.curAlloc>0.005&&!exitCandidates.find(e=>e.ticker===p.t)){
+      exitCandidates.push({ticker:p.t,alloc:p.curAlloc,target:0,name:p.m?.name||p.t});
+    }
+  });
+  exitCandidates.sort((a,b)=>b.alloc-a.alloc);
+  const exitTotal=exitCandidates.reduce((s,e)=>s+e.alloc,0);
+
   // Filter & sort
   let items=enriched;
   if(state.fTier!=="all")items=items.filter(p=>p.tier===parseInt(state.fTier));
@@ -334,6 +357,7 @@ function render(){
       ${bRoPct!=null?`<div><div class="ml">RO40 &lt;70%</div><div class="mt" style="color:${bRoPct>33?"var(--red)":"var(--text)"}">${bRo} <span style="font-size:11px;color:var(--dim)">(${bRoPct.toFixed(0)}%)</span></div></div>`:""}
       <div><div class="ml">FCF Negative</div><div class="mt" style="color:${fcfN>5?"var(--red)":"var(--text)"}">${fcfN}</div></div>
       <div><div class="ml">Alerts</div><div class="mt" style="color:${alerts.length>5?"var(--red)":"var(--amber)"}">${alerts.length}</div></div>
+      ${exitCandidates.length>0?`<div><div class="ml">Exits</div><div class="mt" style="color:var(--red)">${exitCandidates.length} <span style="font-size:11px;color:var(--dim)">(${exitTotal.toFixed(1)}%)</span></div></div>`:""}
       ${!hasData?`<div class="info">⚠ No financial data — go to Data tab to paste your screener TSV</div>`:""}
     </div>
   </div><div style="padding:14px 18px">`;
@@ -417,6 +441,28 @@ function render(){
         <div style="margin-top:6px">${p.reasons.slice(0,4).map(r=>`<div style="font-size:10px;padding:1px 0">→ ${h(r)}</div>`).join("")}</div>
       </div>`;
     });
+    // Exit candidates
+    if(exitCandidates.length>0){
+      html+=`<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--red);margin-bottom:8px">Positions to Exit — ${exitTotal.toFixed(1)}% capital to redeploy</div>
+        <div style="font-size:10px;color:var(--dim);margin-bottom:10px">These positions have allocation > 0% but target = 0% or are not in your thesis portfolio</div>`;
+      exitCandidates.forEach(e=>{
+        html+=`<div class="cd" style="border-left:3px solid var(--red);cursor:default">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:13px;font-weight:700">${e.ticker}</span>
+              <span class="sb" style="background:#ef444422;color:var(--red);border:1px solid #ef444444">EXIT</span>
+              <span style="font-size:9px;color:var(--dim)">${h(e.name)}</span>
+            </div>
+            <div style="text-align:right">
+              <span style="font-size:13px;font-weight:700;color:var(--red)">${e.alloc.toFixed(2)}%</span>
+              <span style="font-size:9px;color:var(--dim)"> → 0%</span>
+            </div>
+          </div>
+        </div>`;
+      });
+      html+=`</div>`;
+    }
     html+=`</div>`;
   }
 
