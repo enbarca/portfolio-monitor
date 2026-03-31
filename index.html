@@ -128,9 +128,9 @@ const RL={"compute":"AI Compute","platform":"Agent Platform","endpoint":"Real-Wo
 const RC={"compute":"#f59e0b","platform":"#3b82f6","endpoint":"#10b981","infrastructure":"#06b6d4","data-moat":"#8b5cf6","human-trust":"#a855f7"};
 
 // State
-let state={view:"dashboard",fd:{},peg:{},alloc:{},sort:"signal",fTier:"all",fRole:"all",expanded:null,gn:{},journal:[],showFin:false,showPeg:false,showAlloc:false};
+let state={view:"dashboard",fd:{},peg:{},alloc:{},allocTargets:{},sort:"signal",fTier:"all",fRole:"all",expanded:null,gn:{},journal:[],showFin:false,showPeg:false,showAlloc:false};
 
-function load(){try{state.fd=JSON.parse(localStorage.getItem("ptm_fd")||"{}");state.peg=JSON.parse(localStorage.getItem("ptm_peg")||"{}");state.gn=JSON.parse(localStorage.getItem("ptm_gn")||"{}");state.journal=JSON.parse(localStorage.getItem("ptm_je")||"[]");state.alloc=JSON.parse(localStorage.getItem("ptm_alloc")||"{}")}catch(e){}}
+function load(){try{state.fd=JSON.parse(localStorage.getItem("ptm_fd")||"{}");state.peg=JSON.parse(localStorage.getItem("ptm_peg")||"{}");state.gn=JSON.parse(localStorage.getItem("ptm_gn")||"{}");state.journal=JSON.parse(localStorage.getItem("ptm_je")||"[]");state.alloc=JSON.parse(localStorage.getItem("ptm_alloc")||"{}");state.allocTargets=JSON.parse(localStorage.getItem("ptm_allocTargets")||"{}")}catch(e){}}
 function save(k,v){try{localStorage.setItem("ptm_"+k,JSON.stringify(v))}catch(e){}}
 
 // Parsers
@@ -292,7 +292,15 @@ function h(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"
 
 // Render
 function render(){
-  const fd=state.fd;const enriched=POSITIONS.map(p=>{const m=metrics(fd[p.t]);const curAlloc=state.alloc[p.t]!=null?state.alloc[p.t]:null;const sig=signal(p,m,curAlloc);const pg=state.peg[p.t];return{...p,m,...sig,curAlloc,peg:pg?.peg,pegRo40:pg?.ro40ext}});
+  const fd=state.fd;const enriched=POSITIONS.map(p=>{
+    const m=metrics(fd[p.t]);
+    const curAlloc=state.alloc[p.t]!=null?state.alloc[p.t]:null;
+    // Target from allocation paste overrides hardcoded default
+    const effTarget=(state.allocTargets&&state.allocTargets[p.t]!=null)?state.allocTargets[p.t]:p.target;
+    const posWithTarget={...p,target:effTarget};
+    const sig=signal(posWithTarget,m,curAlloc);
+    const pg=state.peg[p.t];
+    return{...posWithTarget,m,...sig,curAlloc,peg:pg?.peg,pegRo40:pg?.ro40ext}});
 
   // Health
   let tRo=0,cRo=0,bRo=0,tGr=0,cGr=0,fcfN=0;
@@ -308,7 +316,7 @@ function render(){
   const sorts={signal:(a,b)=>(b.score||0)-(a.score||0),ai:(a,b)=>((b.aiScore||0)-(a.aiScore||0)),quality:(a,b)=>((b.quality||0)-(a.quality||0)),conviction:(a,b)=>((b.conviction||0)-(a.conviction||0)),growth:(a,b)=>((b.m?.growth||-99)-(a.m?.growth||-99)),ro40:(a,b)=>((b.m?.ro40||-99)-(a.m?.ro40||-99)),peg:(a,b)=>((a.m?.peg||99)-(b.m?.peg||99)),pfcf:(a,b)=>((a.m?.pfcf||999)-(b.m?.pfcf||999)),target:(a,b)=>b.target-a.target,gap:(a,b)=>{const ga=a.curAlloc!=null?a.target-a.curAlloc:0;const gb=b.curAlloc!=null?b.target-b.curAlloc:0;return gb-ga}};
   items=[...items].sort(sorts[state.sort]||sorts.signal);
   const hasData=Object.keys(fd).length>0;
-  const totalTarget=POSITIONS.reduce((s,p)=>s+p.target,0);
+  const totalTarget=enriched.reduce((s,p)=>s+p.target,0);
 
   let html=`<div style="border-bottom:1px solid var(--border);padding:14px 18px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -539,7 +547,7 @@ function loadAlloc(){const el=document.getElementById("allocInput");if(el&&el.va
   // Also store targets if provided
   if(Object.keys(newTargets).length>0){state.allocTargets=newTargets;save("allocTargets",newTargets)}
   state.showAlloc=false;render();alert("Loaded "+count+" allocations")}else{alert("Could not parse. Expected format:\\nAlloc%\\tTarget%\\tTICKER\\nor TICKER\\tAlloc%")}}}
-function clearData(){if(confirm("Clear all financial data?")){state.fd={};state.peg={};state.alloc={};save("fd",{});save("peg",{});save("alloc",{});render()}}
+function clearData(){if(confirm("Clear all financial data?")){state.fd={};state.peg={};state.alloc={};state.allocTargets={};save("fd",{});save("peg",{});save("alloc",{});save("allocTargets",{});render()}}
 function addJournal(){const el=document.getElementById("je");if(el&&el.value.trim()){const enriched=POSITIONS.map(p=>metrics(state.fd[p.t]));let tRo=0,cRo=0,tGr=0,cGr=0,al=0;enriched.forEach(m=>{if(m?.ro40!=null){tRo+=m.ro40;cRo++}if(m?.growth!=null){tGr+=m.growth;cGr++}});
   state.journal=[{date:new Date().toISOString().split("T")[0],text:el.value.trim(),health:{avgRo40:cRo?tRo/cRo:null,avgGrowth:cGr?tGr/cGr:null,alerts:al}},...state.journal];save("je",state.journal);render()}}
 function delJournal(i){state.journal=state.journal.filter((_,j)=>j!==i);save("je",state.journal);render()}
