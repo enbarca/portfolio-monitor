@@ -232,9 +232,25 @@ function signal(pos,m,curAlloc){
   const adjusted=conviction+val*5; // valuation can shift ±10 points
   
   // === DETERMINE SIGNAL ===
-  // Signal is driven by: do you need more (gap) + should you want more (conviction + valuation)
   let sig,col;
-  if(pos.vb){F.push("VENTURE BET");R.push("⚠ Thesis-dependent — guardrails apply")}
+  
+  // === VENTURE BET OVERRIDE ===
+  // Venture bets are held for thesis outcomes, not current financials
+  if(pos.vb){
+    F.push("VENTURE BET");
+    // Override quality score — venture bets aren't judged on current revenue
+    const vbConviction=ai*6+val*3; // AI score matters, current quality doesn't
+    R.push("⚠ Venture bet — scored on thesis & allocation, not current financials");
+    R.push(`Thesis conviction: ${vbConviction.toFixed(0)} (AI transition: ${ai.toFixed(0)}/10)`);
+    if(curAlloc!=null){
+      if(gap<-1){sig="HOLD — OVERWEIGHT";col="#f59e0b";R.push("Over target — let position drift down naturally")}
+      else if(gap<-0.3){sig="HOLD";col="#f59e0b";R.push("Near target — hold, check guardrails")}
+      else if(gap>1){sig="ACCUMULATE";col="#a3e635";R.push("Below target — accumulate on dips")}
+      else{sig="HOLD";col="#f59e0b";R.push("On target — hold, monitor guardrail triggers")}
+    }else{sig="VENTURE HOLD";col="#f59e0b"}
+    const score=urgency*2+vbConviction/10;
+    return{signal:sig,color:col,score,reasons:R,flags:F,urgency,quality:q,aiScore:ai,conviction:vbConviction};
+  }
 
   if(curAlloc!=null){
     if(gap<-1){
@@ -262,8 +278,8 @@ function signal(pos,m,curAlloc){
     else{sig="LOW CONVICTION";col="#fb923c"}
   }
 
-  // Override: negative growth + overweight = sell signal
-  if(m.growth!=null&&m.growth<0&&gap<-1){sig="SELL";col="#ef4444";R.unshift("Declining revenue + overweight = exit")}
+  // Override: negative growth + significantly overweight = sell signal
+  if(m.growth!=null&&m.growth<0&&gap<-2){sig="SELL";col="#ef4444";R.unshift("Declining revenue + significantly overweight = exit")}
 
   const score=urgency*3+adjusted/10; // sort score: urgency-weighted
   return{signal:sig,color:col,score,reasons:R,flags:F,urgency,quality:q,aiScore:ai,conviction:adjusted};
